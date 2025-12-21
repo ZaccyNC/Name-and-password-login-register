@@ -1,0 +1,139 @@
+import sys
+import re
+import time
+import sqlite3
+import keyboard
+
+max_password = 115
+really_old = 105
+pretty_old = 85
+
+databaseName = 'main.sqlite'
+connect = sqlite3.connect(databaseName)
+cursor = connect.cursor()
+
+def create_db():
+    cursor.execute('''CREATE TABLE IF NOT EXISTS accounts (username TEXT UNIQUE, password TEXT)''')
+    connect.commit()
+    connect.close()
+
+def check_user_exists(username):
+    cursor.execute('SELECT * FROM users WHERE username = ?', (username,))
+    result = cursor.fetchone()
+    connect.close()
+    return result is not None
+
+def register_account(username, password):
+    try:
+        cursor.execute('''INSERT INTO accounts VALUES ?''', (username, password))
+        connect.commit()
+        print('Account successfully registered')
+    except sqlite3.IntegrityError:
+        print('Username already exists')
+    connect.close()
+
+def login(username, password):
+    try:
+        cursor.execute('''SELECT * FROM accounts WHERE username = ? AND password = ?''', (username.strip(), password))
+        result = cursor.fetchone()
+    except sqlite3.IntegrityError:
+        print('Username does not exist')
+    connect.close()
+    return result is not None
+
+def clean_exit():
+    print('\nGoodbye')
+    sys.exit()
+
+def user_exit(user_input):
+    if user_input.strip().lower() in ('quit', 'exit'):
+        clean_exit()
+
+def name_check(username, is_login=False):
+    def invalid(string):
+        return f'{string}: *' if is_login else "Invalid username, please try again: *"
+
+    if username == '':
+        return invalid("Username cannot be empty")
+    if not all(char.isalnum() or char.isspace() or char == "_" or char == '-' for char in username):
+        return invalid("Username contains invalid characters")
+    if not username[0].isalnum() or not username[-1].isalnum():
+        return invalid("Username may only start/end with numbers or letters")
+    if len(username) < 1 or len(username) > 15:
+        return invalid("Username must be between 1 and 15 characters")
+    if not check_user_exists(username).lower() == username.lower():
+        return invalid("Username already exists, please enter another username")
+
+    username = re.sub(r'\s+', ' ', username).strip()
+    name_confirmation = input(f'"{username}", is that right? (Y/N) ')
+    if name_confirmation.strip().lower() not in ('y', 'yes'):
+        return invalid("Please enter another username")
+    else:
+        return f'{"Continuing login with" if is_login else "Creating account"} "{username}"'
+
+def log_in(username, password, is_login=False):
+    print("Please enter username: ")
+    while True:
+        username_input = input(name_check(username, is_login))
+        if username_input.endswith("*"):
+            username_input = username_input[:-1]
+            continue
+        else:
+            break
+
+    prompt = "Please enter password: "
+    while True:
+        password = input(prompt)
+        if password == '':
+            prompt = "Password cannot be empty: "
+            continue
+        if len(password) < 8:
+            prompt = "Password must contain at least 8 characters: "
+            continue
+        if len(password) > 30:
+            prompt = "Password may not contain more than 30 characters: "
+            continue
+        else:
+            break
+    if is_login == True:
+        log_in(username, password)
+    elif is_login == False:
+        register_account(username, password)
+def get_password(check_user_exists, username, password):
+    if check_user_exists == username.lower():
+        prompt = "Please create password: "
+    else:
+        prompt = "Please enter password: " # User inputs password
+    while True:
+        pswrd = input(prompt)
+        if len(pswrd.strip()) < 1 or len(pswrd) > 15:
+            prompt = "Password must be between 1 and 15 characters: "
+            continue
+        if pswrd == password:
+            return pswrd
+def get_password_comment(password):
+    if password >= max_password:
+        return f" Wait- {password} YEARS OLD!?!? Are they even alive??"
+    elif password >= really_old:
+        return f" {password} is REALLY old!!"
+    elif password >= pretty_old:
+        return f" {password} is pretty old!"
+    return ''
+def key_press_func(key):
+    if key.name == '1':
+        username = input('\nUsername: ')
+        password = input('\nPassword: ')
+        login(username, password)
+    elif key.name == '2':
+        username = input('\nUsername: ')
+        register_account(username, password)
+        password = input('\nPassword: ')
+# MAIN SCRIPT
+try:
+    create_db()
+
+    log_in()
+    print('\nWelcome! Would you like to login (1) or register or (2)?\n')
+    keyboard.on_press(key_press_func)
+except KeyboardInterrupt:
+    clean_exit()
