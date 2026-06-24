@@ -1,139 +1,146 @@
 import sys
-import re
-import time
-import sqlite3
-import keyboard
+import bcrypt
+import mysql.connector
 
-max_password = 115
-really_old = 105
-pretty_old = 85
-
-databaseName = 'main.sqlite'
-connect = sqlite3.connect(databaseName)
-cursor = connect.cursor()
-
-def create_db():
-    cursor.execute('''CREATE TABLE IF NOT EXISTS accounts (username TEXT UNIQUE, password TEXT)''')
-    connect.commit()
-    connect.close()
-
-def check_user_exists(username):
-    cursor.execute('SELECT * FROM users WHERE username = ?', (username,))
-    result = cursor.fetchone()
-    connect.close()
-    return result is not None
-
-def register_account(username, password):
-    try:
-        cursor.execute('''INSERT INTO accounts VALUES ?''', (username, password))
-        connect.commit()
-        print('Account successfully registered')
-    except sqlite3.IntegrityError:
-        print('Username already exists')
-    connect.close()
-
-def login(username, password):
-    try:
-        cursor.execute('''SELECT * FROM accounts WHERE username = ? AND password = ?''', (username.strip(), password))
-        result = cursor.fetchone()
-    except sqlite3.IntegrityError:
-        print('Username does not exist')
-    connect.close()
-    return result is not None
+cnx = mysql.connector.connect(
+    host="localhost",
+    user="root",
+    password="0000",
+    database="database_name",
+    autocommit=False,
+)
+cur = cnx.cursor()
 
 def clean_exit():
     print('\nGoodbye')
     sys.exit()
-
 def user_exit(user_input):
     if user_input.strip().lower() in ('quit', 'exit'):
         clean_exit()
 
-def name_check(username, is_login=False):
-    def invalid(string):
-        return f'{string}: *' if is_login else "Invalid username, please try again: *"
-
-    if username == '':
-        return invalid("Username cannot be empty")
-    if not all(char.isalnum() or char.isspace() or char == "_" or char == '-' for char in username):
-        return invalid("Username contains invalid characters")
-    if not username[0].isalnum() or not username[-1].isalnum():
-        return invalid("Username may only start/end with numbers or letters")
-    if len(username) < 1 or len(username) > 15:
-        return invalid("Username must be between 1 and 15 characters")
-    if not check_user_exists(username).lower() == username.lower():
-        return invalid("Username already exists, please enter another username")
-
-    username = re.sub(r'\s+', ' ', username).strip()
-    name_confirmation = input(f'"{username}", is that right? (Y/N) ')
-    if name_confirmation.strip().lower() not in ('y', 'yes'):
-        return invalid("Please enter another username")
+def get_valid_name(login_type):
+    if login_type == '2':
+        prompt = 'Create username: '
     else:
-        return f'{"Continuing login with" if is_login else "Creating account"} "{username}"'
-
-def log_in(username, password, is_login=False):
-    print("Please enter username: ")
+        prompt = 'Username: '
     while True:
-        username_input = input(name_check(username, is_login))
-        if username_input.endswith("*"):
-            username_input = username_input[:-1]
+        username_input = input(prompt).strip()
+        if username_input is None or username_input == "":
+            prompt = "Username cannot be empty: "
             continue
-        else:
-            break
-
-    prompt = "Please enter password: "
+        if not all(char.isalnum() or char == "_" or char == '-' for char in username_input):
+            prompt = "Username contains invalid characters: "
+            continue
+        if not username_input[0].isalnum() or not username_input[-1].isalnum():
+            prompt = "Username cannot contain trailing non-alphanumeric characters: "
+            continue
+        if len(username_input) < 1 or len(username_input) > 20:
+            prompt = "Username must be between 1 and 20 characters: "
+            continue
+        if input(f'"{username_input}", is that right? (Y/N): ').strip().lower() not in ('y', 'yes'):
+            prompt = "Please enter another username: "
+            continue
+        return username_input
+def get_valid_pass(login_type):
+    if login_type == '2':
+        prompt = 'Create password: '
+    else:
+        prompt = 'Password: '
     while True:
-        password = input(prompt)
-        if password == '':
+        password_input = input(prompt)
+        if password_input is None or password_input.strip() == "":
             prompt = "Password cannot be empty: "
             continue
-        if len(password) < 8:
+        if not all(char.isalnum() or char.isspace() or char == "_" or char == '-' for char in password_input):
+            prompt = "Password contains invalid characters: "
+            continue
+        if not password_input[0].isalnum() or not password_input[-1].isalnum():
+            prompt = "Password cannot contain trailing non-alphanumeric characters: "
+            continue
+        """
+        if len(password_input) < 8:
             prompt = "Password must contain at least 8 characters: "
             continue
-        if len(password) > 30:
-            prompt = "Password may not contain more than 30 characters: "
+        if len(password_input) > 30:
+            prompt = "Password cannot contain more than 30 characters: "
             continue
-        else:
-            break
-    if is_login == True:
-        log_in(username, password)
-    elif is_login == False:
-        register_account(username, password)
-def get_password(check_user_exists, username, password):
-    if check_user_exists == username.lower():
-        prompt = "Please create password: "
-    else:
-        prompt = "Please enter password: " # User inputs password
-    while True:
-        pswrd = input(prompt)
-        if len(pswrd.strip()) < 1 or len(pswrd) > 15:
-            prompt = "Password must be between 1 and 15 characters: "
-            continue
-        if pswrd == password:
-            return pswrd
-def get_password_comment(password):
-    if password >= max_password:
-        return f" Wait- {password} YEARS OLD!?!? Are they even alive??"
-    elif password >= really_old:
-        return f" {password} is REALLY old!!"
-    elif password >= pretty_old:
-        return f" {password} is pretty old!"
-    return ''
-def key_press_func(key):
-    if key.name == '1':
-        username = input('\nUsername: ')
-        password = input('\nPassword: ')
-        login(username, password)
-    elif key.name == '2':
-        username = input('\nUsername: ')
-        register_account(username, password)
-        password = input('\nPassword: ')
-# MAIN SCRIPT
-try:
-    create_db()
+        """
+        if login_type == '2':
+            password_confirmation = input('Please confirm password: ')
+            if password_confirmation != password_input:
+                prompt = "Password does not match. Please enter another password: "
+                continue
+        return password_input
 
-    log_in()
-    print('\nWelcome! Would you like to login (1) or register or (2)?\n')
-    keyboard.on_press(key_press_func)
+def check_login(username, password_plain):
+    cur.execute(
+        "SELECT password FROM accounts WHERE username = %s",
+        (username.strip(),)
+    )
+    row = cur.fetchone()
+    if not row:
+        return False
+    stored_hash_str = row[0]
+    return bcrypt.checkpw(
+        password_plain.encode("utf-8"),
+        stored_hash_str.encode("utf-8")
+    )
+def free_account_name(username):
+    cur.execute(
+        "SELECT 1 FROM accounts WHERE username = %s",
+        (username.strip(),)
+    )
+    return cur.fetchone() is None
+def register_account(username, password_plain):
+    pw_hash = bcrypt.hashpw(password_plain.encode("utf-8"), bcrypt.gensalt())
+    pw_hash_str = pw_hash.decode("utf-8")  # store as TEXT/VARCHAR
+    try:
+        cur.execute(
+            "INSERT INTO accounts (username, password) VALUES (%s, %s)",
+            (username.strip(), pw_hash_str)
+        )
+        cnx.commit()
+    except mysql.connector.IntegrityError:
+        cnx.rollback()
+        raise
+
+# MAIN SCRIPT
+
+# Login Types
+    # 1 = Login
+    # 2 = Create Account
+try:
+    login_type = input('Login (1) or create account (2): ').strip()
+    if login_type not in ('1', '2'):
+        clean_exit()
+    while True:
+        username = get_valid_name(login_type)
+        password = get_valid_pass(login_type)
+        if login_type == '1':
+            if check_login(username, password):
+                print('Login successful.')
+                break
+            else:
+                print('Incorrect username or password. Please try again.')
+                continue
+
+        else:
+            if free_account_name(username):
+                try:
+                    register_account(username, password)
+                except mysql.connector.IntegrityError:
+                    print('Account already exists. Please try again.')
+                    continue
+                print('Account successfully created.')
+                break
+            else:
+                print('Account already exists. Please try again.')
+                continue
+    clean_exit()
 except KeyboardInterrupt:
     clean_exit()
+except Exception:
+    clean_exit()
+finally:
+    cur.close()
+    cnx.close()
